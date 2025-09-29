@@ -1,0 +1,11 @@
+
+name: noclouds
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - numpy
+  - dask
+  - pip
+  - pip:
+      - git+https://github.com/lewistrotter/noclouds.git
