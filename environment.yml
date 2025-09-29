@@ -6,6 +6,10 @@ dependencies:
   - python>=3.9
   - numpy
   - dask
+  - numba
+  - xarray
+  - rioxarray
+  - xgboost
   - pip
   - pip:
       - git+https://github.com/lewistrotter/noclouds.git
