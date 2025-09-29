@@ -18,7 +18,7 @@ setup(
     url='https://github.com/lewistrotter/noclouds',
     author='Lewis Trotter',
     author_email='mrlewie@outlook.com',
-    description='A small package for detecting, removing and/or filling clouded pixels in satellite images.',
+    description='A small python package for detecting, removing and/or filling clouded pixels in satellite images.',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
