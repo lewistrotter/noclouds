@@ -9,6 +9,7 @@ dependencies:
   - numba
   - xarray
   - rioxarray
+  - scikit-learn
   - xgboost
   - pip
   - pip:

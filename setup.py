@@ -12,6 +12,7 @@ setup(
         'numba',
         'xarray',
         'rioxarray',
+        'scikit-learn',
         'xgboost'
     ],
     python_requires='>=3.9',
