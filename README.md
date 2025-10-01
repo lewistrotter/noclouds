@@ -5,6 +5,7 @@
 ## Supported methods
 
 ### Cloud-filling
-| Method | Citation | Reference | Target | Output |
-|--------|----------|-----------|--------|--------|
-| SSRF (Spatial-Spectral Random Forest) | Wang et al. (2022) | img_a.png | img_b.png | img_c.png |
+| Method | Citation | Example |
+|--------|----------|---------|
+| SSRF (Spatial-Spectral Random Forest) | Wang et al. (2022) | <img src="docs/images/ssrf.png" width="100%"> |
+
