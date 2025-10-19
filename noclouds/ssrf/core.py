@@ -6,7 +6,6 @@ import xarray as xr
 
 from lightgbm import LGBMRegressor
 
-
 from noclouds.utils.helpers import nodata_mask
 from noclouds.utils.helpers import default_params
 
@@ -71,9 +70,7 @@ def _extract_train_idx(
         arr_i,
         size=n_select,
         replace=False
-    )
-
-    arr_i = arr_i.astype(np.int32)
+    ).astype(np.int32)
 
     return arr_i
 
@@ -87,16 +84,11 @@ def _split_train_eval_idx(
     if train_percent < 0 or train_percent > 1:
         raise ValueError('Input train_percent must be between 0 and 1')
 
-    n_total = arr.size
-    split_i = int(n_total * train_percent)
-
     rng = np.random.default_rng(rand_seed)
-    arr_i = rng.permutation(n_total)
+    arr_i = rng.permutation(arr)
+    split_i = int(len(arr_i) * train_percent)
 
-    arr_train = arr[arr_i[:split_i]]
-    arr_eval = arr[arr_i[split_i:]]
-
-    return arr_train, arr_eval
+    return arr_i[:split_i], arr_i[split_i:]
 
 
 # TODO: exact same as dask, ref this one in lazy
@@ -175,7 +167,7 @@ def _fill_y(
     x_size = arr_tar.shape[1] - (offset * 2) # remove pad
 
     if not predict_inplace:
-        arr_tar = arr_tar.copy()  # TODO: check this funcs as expected
+        arr_tar = arr_tar.copy()
 
     n_idx = len(arr_i)
     if n_idx == 0:
@@ -198,6 +190,53 @@ def extract_train_set(
         percent_train: float | None = 0.9,
         rand_seed: int = 0
 ) -> tuple:
+    """
+    Standalone function to extract paired training and evaluation datasets
+    from reference and target rasters. Implementation uses numba for very fast
+    windowed pixel iteration.
+
+    This function is based on the training / evaluation data logic discussed
+    by Wang et al. (2022). Basically, the algorithm iterates over every pixel
+    in the overlapping reference and target datasets. To be valid, the pixel
+    in the target (y) must not be NoData, and the surrounding 9 pixels in the
+    reference set (x) must also not have any NoData. If so, these pixels are
+    flagged as valid training samples. Once complete, they're randomly sampled
+    to n_total_samples size. The output are four numpy arrays: `arr_x`, `arr_y`.
+    If percent_train is not None, a `arr_x_eval` and `arr_y_eval` set are also
+    provided, else they are None, None.
+
+    Parameters
+    ----------
+    da_ref : xr.DataArray
+        Reference data (predictor variables), 2D or 3D (bands, y, x). Must
+        have same y, x shape and NoData value as `da_tar`. Band size can differ.
+    da_tar : xr.DataArray
+        Target data (response variables), 2D or 3D (bands, y, x). Must
+        have same y, x shape and NoData value as `da_ref`. Band size can differ.
+    nodata : int or float
+        NoData value identifying invalid pixels. Cloud or gap pixels should
+        have this value. Must be provided.
+    n_total_samples : int, default=100000
+        Number of training samples to extract. If None, all valid pixels are used.
+    percent_train : float or None, default=0.9
+        Fraction of samples used for model training (rest for evaluation). If None,
+        no evaluation will be performed.
+    rand_seed : int or None, default=0
+        Random seed for reproducibility. Used for random sampling.
+
+    Returns
+    -------
+    tuple
+        (arr_x, arr_y, arr_x_ev, arr_y_ev)
+        - arr_x : np.ndarray
+            Training feature matrix (samples * features).
+        - arr_y : np.ndarray
+            Training target values (samples * targets).
+        - arr_x_ev : np.ndarray or None
+            Evaluation feature matrix, or None if `percent_train` is None.
+        - arr_y_ev : np.ndarray or None
+            Evaluation target values, or None if `percent_train` is None.
+    """
 
     if not isinstance(da_ref, xr.DataArray):
         raise TypeError('Input da_ref must be type xr.DataArray.')
@@ -303,6 +342,44 @@ def calibrate_models(
         params: dict | None = None,
         callbacks: list | None = None
 ) -> list:
+    """
+    Train one LightGBM regression model per target variable. Implemnts a
+    random forest version of LightGBM based on the official documentation.
+    Users can override this to any parameter setup by providing parameters
+    and callbacks (e.g., for early stopping) as supported by the Scikit-Learn
+    package implemntation of LightGBM.
+
+    Parameters
+    ----------
+    arr_x : np.ndarray
+        Training features of shape (n_samples, n_features). Must have same
+        number of rows as `arr_y`.
+    arr_y : np.ndarray
+        Training targets of shape (n_samples, n_targets). Must have same
+        number of rows as `arr_x`.
+    arr_x_ev : np.ndarray or None, optional
+        Evaluation features for validation. Must have same number of rows as
+        `arr_y_ev`.
+    arr_y_ev : np.ndarray or None, optional
+        Evaluation targets for validation. Must have same number of rows as
+        `arr_x_ev`.
+    params : dict, optional
+        LightGBM hyperparameters. If None, defaults from `default_params()`,
+        which utilises a random forest version of LightGBM, are used.
+    callbacks : list, optional
+        Optional LightGBM callback functions (e.g., for early stopping).
+
+    Returns
+    -------
+    list
+        List of trained `LGBMRegressor` models, one per target (y) variable.
+
+    Notes
+    -----
+    Each column in `arr_y` is treated as an independent regression target.
+    If evaluation sets are provided, they are passed to LightGBM’s `eval_set`
+    for monitoring during training.
+    """
 
     if not isinstance(arr_x, np.ndarray):
         raise TypeError('Input arr_x must be type np.ndarray.')
@@ -373,6 +450,39 @@ def predict_models(
         nodata: int | float,
         predict_inplace: bool = True,
 ) -> xr.DataArray:
+    """
+    Apply trained LightGBM models to predict target values for all missing
+    pixels in the target (`da_tar`) xarray data array.
+
+    For each model, features are constructed from 3×3 neighborhoods of the
+    reference array and predictions are written back into the target array
+    where valid nodata conditions are met. This is based on the Wang et al.
+    (2022) paper. Numba is used for speed.
+
+    Parameters
+    ----------
+    da_ref : xr.DataArray
+        Reference input data used for prediction, 2D or 3D (bands, y,  x).
+    da_tar : xr.DataArray
+        Target output data template, 2D or 3D (bands, y, x).
+    models : list
+        List of trained `LGBMRegressor` models (one per target (y) band).
+    nodata : int or float
+        NoData value marking invalid pixels in input arrays. Must be provided.
+    predict_inplace : bool, default=True
+        If True, predictions overwrite valid pixels in `da_tar` in place.
+        Otherwise, a copy of `da_tar` is modified.
+
+    Returns
+    -------
+    xr.DataArray
+        Predicted target data array with the same shape, dims, and coords as `da_tar`.
+
+    Notes
+    -----
+    Predictions are performed for all NoData target (y) pixels whose 3×3 reference
+    window contains no nodata values. See Wang et al. (2022) for more details.
+    """
 
     if not isinstance(da_ref, xr.DataArray):
         raise TypeError('Input da_ref must be type xr.DataArray.')
@@ -413,15 +523,11 @@ def predict_models(
     if len(models) != arr_tar.shape[0]:
         raise ValueError('Inputs models and da_ref must have same num vars.')
 
-    # ...
     arr_mask = _make_predict_mask(
         nodata_mask(arr_ref, nodata),
         nodata_mask(arr_tar, nodata)
     )
 
-    # todo: determine max dtype
-
-    # ...
     arr_i = _extract_predict_idx(arr_mask)
 
     del arr_mask
@@ -433,6 +539,7 @@ def predict_models(
         for arr_var in arr_ref
     ])
 
+    # predict nodata for each y variable
     arr_y_pred = []
     for i, model in enumerate(models):
         print(f'Predicting variable {i + 1}.')
@@ -445,7 +552,7 @@ def predict_models(
     del arr_x
     gc.collect()
 
-    # fill with predicted
+    # fill missing with predicted
     arr_y = np.stack([
         _fill_y(arr_i, t, p, offset, predict_inplace)
         for t, p in zip(arr_tar, arr_y_pred)
@@ -454,7 +561,6 @@ def predict_models(
     del arr_y_pred
     gc.collect()
 
-    # ...
     da_out = xr.DataArray(
         arr_y,
         dims=da_tar.dims,
@@ -471,13 +577,57 @@ def run(
         nodata: int | float,
         n_total_samples: int | None = 100000,
         percent_train: float | None = 0.9,
-        early_stopping_rounds: int | None = 10,
-        log_evaluation_periods: int | None = 5,
         predict_inplace: bool = True,
         rand_seed: int | None = 0,
         params: dict = None,
         callbacks: list | None = None
 ) -> xr.DataArray:
+    """
+    End-to-end Spatial-Spectral Random Forest Regression technique
+    for multi-temporal clouded and missing pixel filling. Algorithm is
+    identical to Wang et al. (2022) except LightGBM is used to implement
+    the random forest regressor.
+
+    This function orchestrates training data extraction, model calibration,
+    and prediction in a single call. It identifies valid training samples
+    using numba for speed, fits LightGBM regressors per target variable, and
+    applies them to produce a spatially complete predicted xarray data array.
+    See the ssrf.lazy implementation for dask version.
+
+    Parameters
+    ----------
+    da_ref : xr.DataArray
+        Reference data (predictor variables), 2D or 3D (bands, y, x). Must
+        have same y, x shape and NoData value as `da_tar`. Band size can differ.
+    da_tar : xr.DataArray
+        Target data (response variables), 2D or 3D (bands, y, x). Must
+        have same y, x shape and NoData value as `da_ref`. Band size can differ.
+    nodata : int or float
+        NoData value identifying invalid pixels. Cloud or gap pixels should
+        have this value. Must be provided.
+    n_total_samples : int, default=100000
+        Number of training samples to extract. If None, all valid pixels are used.
+    percent_train : float or None, default=0.9
+        Fraction of samples used for model training (rest for evaluation). If None,
+        no evaluation will be performed.
+    predict_inplace : bool, default=True
+        Whether predictions overwrite the target array in place. If True, will
+        modify the input `da_tar`. Using False will not, but `da_tar` will be
+        copied and thus doubled in memory.
+    rand_seed : int or None, default=0
+        Random seed for reproducibility. Used for random sampling and model
+        training.
+    params : dict, optional
+        LightGBM hyperparameter dictionary. Same as Scikit-Learn. If not
+        provided, defaults to a LightGBM-based random forest setup.
+    callbacks : list or None, optional
+        Optional LightGBM callbacks (e.g., early stopping). See Scikit-Learn.
+
+    Returns
+    -------
+    xr.DataArray
+        Model-predicted target data with same dimensions as input `da_tar`.
+    """
 
     if not isinstance(da_ref, xr.DataArray):
         raise TypeError('Input da_ref must be type xr.DataArray.')
