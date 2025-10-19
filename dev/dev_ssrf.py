@@ -3,6 +3,9 @@ import os
 import time
 import xarray as xr
 
+from lightgbm import early_stopping
+from lightgbm import log_evaluation
+
 from noclouds import ssrf
 
 DATA_DIR = '../tests/data'
@@ -26,20 +29,8 @@ def _dev():
     ).drop_vars('spatial_ref')
 
     nodata = -999
-    n_samples = 2000000
-
-    # xgb_params = {
-    #     'objective': 'reg:squarederror',
-    #     'tree_method': 'hist',
-    #     'learning_rate': 0.1,
-    #     'max_depth': 8,
-    #     'num_boost_round': 500,
-    #     'percent_train': 0.9,
-    #     'split_seed': None,
-    #     'early_stopping_rounds': 10,
-    #     'verbose_eval': 5,
-    #     'device': 'gpu'
-    # }
+    n_total_samples = 2000000
+    rand_seed = 40
 
     params = {
         'n_estimators': 500,
@@ -49,8 +40,13 @@ def _dev():
         'bagging_fraction': 0.8,
         'bagging_freq': 1,
         'feature_fraction': 0.8,
-        'random_state': 0
+        'random_state': rand_seed
     }
+
+    cbs = [
+        early_stopping(10),
+        log_evaluation(5)
+    ]
 
     s = time.time()
 
@@ -58,13 +54,14 @@ def _dev():
         da_ref=ds_clear.to_array(),  # inputs, features, predictors
         da_tar=ds_cloud.to_array(),  # target
         nodata=nodata,
-        n_total_samples=n_samples,
+        n_total_samples=n_total_samples,
         percent_train=0.9,
         early_stopping_rounds=10,
         log_evaluation_periods=5,
         predict_inplace=True,
-        rand_seed=0,
-        params=params
+        rand_seed=rand_seed,
+        params=params,
+        callbacks=cbs
     )
 
     e = time.time()

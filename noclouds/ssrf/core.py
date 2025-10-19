@@ -5,8 +5,7 @@ import numba as nb
 import xarray as xr
 
 from lightgbm import LGBMRegressor
-from lightgbm import early_stopping
-from lightgbm import log_evaluation
+
 
 from noclouds.utils.helpers import nodata_mask
 from noclouds.utils.helpers import default_params
@@ -263,7 +262,7 @@ def extract_train_set(
             rand_seed
         )
 
-    # no padding, so no need for offset
+    # no padding so no need for an offset
     offset = 0
 
     # make training x set
@@ -281,13 +280,13 @@ def extract_train_set(
     if percent_train is None:
         return arr_x, arr_y, None, None
 
-    # make evaluation x set
+    # make eval x set
     arr_x_ev = np.hstack([
         _extract_x(arr_i_ev, arr_var, offset)
         for arr_var in arr_ref
     ])
 
-    # make evaluation y set
+    # make eval y set
     arr_y_ev = np.hstack([
         _extract_y(arr_i_ev, arr_var, offset)
         for arr_var in arr_tar
@@ -301,10 +300,8 @@ def calibrate_models(
         arr_y: np.ndarray,
         arr_x_ev: np.ndarray | None = None,
         arr_y_ev: np.ndarray | None = None,
-        early_stopping_rounds: int | None = 10,
-        log_evaluation_periods: int | None = 5,
-        rand_seed: int = 0,
-        params: dict | None = None
+        params: dict | None = None,
+        callbacks: list | None = None
 ) -> list:
 
     if not isinstance(arr_x, np.ndarray):
@@ -344,16 +341,9 @@ def calibrate_models(
         if arr_x_ev.dtype != arr_y_ev.dtype:
             raise TypeError('Inputs arr_x_ev, arr_y_ev must have same dtype.')
 
-    # TODO: check if early_stopping and no evals, throw error
-
     if params is None:
         params = default_params()
-        ...
-
-    cbs = [
-        early_stopping(early_stopping_rounds),
-        log_evaluation(log_evaluation_periods)
-    ]  # FIXME dont like this, think bout it
+        callbacks = None
 
     models = []
     for i in range(arr_y.shape[1]):
@@ -368,13 +358,10 @@ def calibrate_models(
             eval_set=eval_set,
             eval_names=['valid'],  # ignored if no eval_set
             eval_metric='rmse',    # likewise
-            callbacks=cbs
+            callbacks=callbacks
         )
 
         models.append(model)
-
-    del eval_set
-    gc.collect()
 
     return models
 
@@ -488,7 +475,8 @@ def run(
         log_evaluation_periods: int | None = 5,
         predict_inplace: bool = True,
         rand_seed: int | None = 0,
-        params: dict = None
+        params: dict = None,
+        callbacks: list | None = None
 ) -> xr.DataArray:
 
     if not isinstance(da_ref, xr.DataArray):
@@ -521,10 +509,8 @@ def run(
         arr_y,
         arr_x_ev,
         arr_y_ev,
-        early_stopping_rounds,
-        log_evaluation_periods,
-        rand_seed,
-        params
+        params,
+        callbacks
     )
 
     del arr_x, arr_y, arr_x_ev, arr_y_ev
