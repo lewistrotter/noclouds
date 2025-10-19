@@ -1,5 +1,7 @@
 
 import numpy as np
+import numba as nb
+
 
 def nodata_mask(
         arr: np.ndarray,
@@ -12,47 +14,50 @@ def nodata_mask(
         return np.any(np.isnan(arr), axis=0)
 
 
-def _prepare_xgb_params(xgb_params: dict) -> dict:
 
-    num_boost_round = xgb_params.pop('num_boost_round', None)
+@nb.njit(inline='always')
+def has_nodata_1d(
+        arr: np.ndarray,
+        nodata: int | float
+):
+    i_size = arr.shape[0]
 
-    if num_boost_round is None:
-        num_boost_round = 100
+    for i in range(i_size):
+        v = arr[i]
+        if v  == nodata or np.isnan(v):
+            return True
 
-    percent_train = xgb_params.pop('percent_train', None)
-    split_seed = xgb_params.pop('split_seed', None)
-    early_stopping_rounds = xgb_params.pop('early_stopping_rounds', None)
-    verbose_eval = xgb_params.pop('verbose_eval', None)
+    return False
 
-    if percent_train is None:
-        split_seed = None
-        early_stopping_rounds = None
-        verbose_eval = None
 
-    extra_xgb_params = {
-        'num_boost_round': num_boost_round,
-        'percent_train': percent_train,
-        'split_seed': split_seed,
-        'early_stopping_rounds': early_stopping_rounds,
-        'verbose_eval': verbose_eval
+@nb.njit(inline='always')
+def has_nodata_3d(
+        arr: np.ndarray,
+        nodata: int | float
+):
+    b_size, y_size, x_size = arr.shape
+
+    for b in range(b_size):
+        for y in range(y_size):
+            for x in range(x_size):
+                v = arr[b, y, x]
+                if v == nodata or np.isnan(v):
+                    return True
+
+    return False
+
+
+def default_params() -> dict:
+
+    params = {
+        'n_estimators': 500,
+        'boosting_type': 'rf',
+        'num_leaves': 32,
+        'learning_rate': 0.01,
+        'bagging_fraction': 0.8,
+        'bagging_freq': 1,
+        'feature_fraction': 0.8,
+        'random_state': 0
     }
 
-    return extra_xgb_params
-
-
-def default_xgb_params() -> dict:
-
-    # TODO: determine optimal via optimum package
-
-    return {
-        'objective': 'reg:squarederror',
-        'tree_method': 'hist',
-        'learning_rate': 0.1,
-        'max_depth': 8,
-        'num_boost_round': 100,
-        'percent_train': None,
-        'split_seed': None,
-        'early_stopping_rounds': None,
-        'verbose_eval': None
-    }
-
+    return params

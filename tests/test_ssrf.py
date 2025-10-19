@@ -4,10 +4,10 @@ import time
 import pytest
 import xarray as xr
 
-
 from noclouds import ssrf
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+
 
 def test_ssrf_run_full():
     """Full SSRF run."""
@@ -50,6 +50,7 @@ def test_ssrf_run_full():
         da_tar=ds_cloud.to_array(),  # target
         nodata=nodata,
         n_samples=n_samples,
+        rand_seed=0,
         predict_inplace=True,
         xgb_params=xgb_params
     )

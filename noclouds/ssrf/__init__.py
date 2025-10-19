@@ -1,6 +1,15 @@
 
 from .core import extract_train_set
-from .core import build_xgb_models
+from .core import calibrate_models
+from .core import predict_models
 from .core import run
 
-#from . import dask
+from . import lazy
+
+__all__ = [
+    'extract_train_set',
+    'calibrate_models',
+    'predict_models',
+    'run',
+    'lazy'
+]

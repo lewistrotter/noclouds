@@ -2,6 +2,8 @@
 from setuptools import setup
 from setuptools import find_packages
 
+# FIXME: dask xgboost fails when using pip install... fix.
+
 setup(
     name='noclouds',
     version='0.1.0',
