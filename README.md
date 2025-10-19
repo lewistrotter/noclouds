@@ -21,7 +21,7 @@
     <td><img src="docs/images/ssrf.png" width="100%"></td>
   </tr>
   <tr>
-    <td style="width:1%;"><p align="left">Moving Window Regression (MWR)</p></td>
+    <td style="width:1%;"><p align="left">MWR (Moving Window Regression)</p></td>
     <td><p align="left">Brooks et al. (2018)</p></td>
     <td><p align="center">✅</p></td>
     <td><p align="center">✅</p></td>
@@ -48,5 +48,6 @@
     <td><img src="docs/images/mfsr.png" width="100%"></td>
   </tr>
 </table>
+
 
 
