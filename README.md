@@ -4,8 +4,26 @@
 
 ## Supported methods
 
-### Cloud-filling
-| Method | Citation | Example |
-|--------|----------|---------|
-| SSRF (Spatial-Spectral Random Forest) | Wang et al. (2022) | <img src="docs/images/ssrf.png" width="100%"> |
+### Gap-filling
+<table style="width:100%;">
+  <tr>
+    <th>Method</th>
+    <th>Citation</th>
+    <th>Numba</th>
+    <th>Dask</th>
+    <th>Example</th>
+  </tr>
+  <tr>
+    <td style="width:1%;"><p align="left">SSRF (Spatial-Spectral Random Forest)</p></td>
+    <td><p align="left">Wang et al. (2022)</p></td>
+    <td><p align="center">✅</p></td>
+    <td><p align="center">✅</p></td>
+    <td><img src="docs/images/ssrf.png" width="100%"></td>
+  </tr>
+</table>
+
+
+
+### Anomoly detection
+
 
