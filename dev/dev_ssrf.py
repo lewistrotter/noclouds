@@ -56,8 +56,6 @@ def _dev():
         nodata=nodata,
         n_total_samples=n_total_samples,
         percent_train=0.9,
-        early_stopping_rounds=10,
-        log_evaluation_periods=5,
         predict_inplace=True,
         rand_seed=rand_seed,
         params=params,
