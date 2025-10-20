@@ -10,7 +10,6 @@ from noclouds.utils.helpers import nodata_mask
 from noclouds.utils.helpers import default_params
 
 
-# TODO: exact same as dask, ref this one in lazy
 @nb.njit(parallel=True)
 def _make_train_mask(
         arr_ref: np.ndarray,
@@ -48,7 +47,6 @@ def _make_predict_mask(
     return arr_out
 
 
-# TODO: exact same as dask, ref this one in lazy
 def _extract_train_idx(
         arr: np.ndarray,
         n_samples: int,
@@ -105,7 +103,7 @@ def _extract_predict_idx(
     return arr_i
 
 
-# TODO: exact same as dask, ref this one in lazy
+
 @nb.njit(parallel=True)
 def _extract_x(
         arr_i: np.ndarray,
@@ -343,11 +341,11 @@ def calibrate_models(
         callbacks: list | None = None
 ) -> list:
     """
-    Train one LightGBM regression model per target variable. Implemnts a
+    Train one LightGBM regression model per target variable. Implements a
     random forest version of LightGBM based on the official documentation.
     Users can override this to any parameter setup by providing parameters
     and callbacks (e.g., for early stopping) as supported by the Scikit-Learn
-    package implemntation of LightGBM.
+    package implementation of LightGBM.
 
     Parameters
     ----------
