@@ -5,11 +5,11 @@ import numba as nb
 import xarray as xr
 import dask
 
-#from lightgbm import LGBMRegressor
-
 from dask.array.overlap import overlap
 from dask.array import map_overlap
 from dask.array import map_blocks
+
+from lightgbm.dask import DaskLGBMRegressor
 
 from dask.diagnostics import ProgressBar
 from dask.distributed import Client
@@ -20,7 +20,7 @@ from .core import _extract_x
 from .core import _extract_y
 
 from noclouds.utils.helpers import nodata_mask
-#from noclouds.utils.helpers import default_params
+from noclouds.utils.helpers import default_params
 
 
 def _guess_train_idx_size_per_block(
@@ -178,7 +178,6 @@ def _split_idx_per_block(
         idx_eval.append(arr[idx[split_i:]])
 
     return idx_train, idx_eval
-
 
 
 def extract_train_set(
@@ -376,6 +375,95 @@ def extract_train_set(
     return arr_x, arr_y, arr_x_ev, arr_y_ev
 
 
+def calibrate_models(
+        arr_x: dask.array.Array,
+        arr_y: dask.array.Array,
+        arr_x_ev: np.ndarray | None = None,
+        arr_y_ev: np.ndarray | None = None,
+        params: dict | None = None,
+        callbacks: list | None = None,
+        client: Client | None = None
+) -> list:
+
+    if not isinstance(arr_x, dask.array.Array):
+        raise TypeError('Input arr_x must be type dask.array.Array.')
+    if not isinstance(arr_y, dask.array.Array):
+        raise TypeError('Input arr_y must be type dask.array.Array.')
+
+    if arr_x.ndim != 2:
+        raise TypeError('Input arr_x must be 2D (samples, n_vars).')
+    if arr_y.ndim != 2:
+        raise TypeError('Input arr_y must be 2D (samples, n_vars).')
+
+    if arr_x.shape[0] != arr_y.shape[0]:
+        raise ValueError('Inputs arr_x, arr_y must have equal sample sizes.')
+
+    if arr_x.dtype != arr_y.dtype:
+        raise TypeError('Inputs arr_x, arr_y must have same dtype.')
+
+    # TODO: check chunk sizes same
+
+    if (arr_x_ev is None) != (arr_y_ev is None):
+        raise ValueError('Inputs arr_x_ev, arr_y_ev must both be provided or ignored.')
+
+    if arr_x_ev is not None and arr_y_ev is not None:
+
+        if not isinstance(arr_x_ev, dask.array.Array):
+            raise TypeError('Input arr_x_ev must be type dask.array.Array.')
+        if not isinstance(arr_y_ev, dask.array.Array):
+            raise TypeError('Input arr_y_ev must be type dask.array.Array.')
+
+        if arr_x_ev.ndim != 2:
+            raise TypeError('Input arr_x_ev must be 2D (samples, n_vars).')
+        if arr_y_ev.ndim != 2:
+            raise TypeError('Input arr_y_ev must be 2D (samples, n_vars).')
+
+        if arr_x_ev.shape[0] != arr_y_ev.shape[0]:
+            raise ValueError('Inputs arr_x_ev, arr_y_ev must have equal sample sizes.')
+
+        if arr_x_ev.dtype != arr_y_ev.dtype:
+            raise TypeError('Inputs arr_x_ev, arr_y_ev must have same dtype.')
+
+        # TODO: check chunk sizes same
+
+    if client is None:
+        raise ValueError('No dask client provided.')
+
+    if params is None:
+        params = default_params()
+        callbacks = None
+
+    x_chunks = {0: -1, 1: -1}
+    y_chunks = {0: -1, 1: 1}
+
+    arr_x = arr_x.rechunk(x_chunks)
+    arr_y = arr_y.rechunk(y_chunks)
+
+    if arr_x_ev is not None:
+        arr_x_ev = arr_x_ev.rechunk(x_chunks)
+        arr_y_ev = arr_y_ev.rechunk(y_chunks)
+
+    models = []
+    for i in range(arr_y.shape[1]):
+
+        eval_set = None
+        if arr_x_ev is not None and arr_y_ev is not None:
+            eval_set = [(arr_x_ev, arr_y_ev[:, i])]
+
+        model = DaskLGBMRegressor(client=client, **params)
+        model.fit(
+            arr_x, arr_y[:, i],
+            eval_set=eval_set,
+            eval_names=['valid'],  # ignored if no eval_set
+            eval_metric='rmse',    # likewise
+            callbacks=callbacks
+        )
+
+        models.append(model)
+
+    return models
+
+
 
 
 
@@ -403,6 +491,8 @@ def run(
     if da_tar.ndim not in (2, 3):
         raise ValueError('Input da_tar must be 2D (y, x) or 3D (b, y, x).')
 
+    # TODO: ensure chunks same
+
     if rand_seed is None:
         rand_seed = np.random.randint(10000)
 
@@ -419,14 +509,17 @@ def run(
     if arr_x.size == 0 or arr_y.size == 0:
         raise ValueError('No training pixels were extracted.')
 
-    # models = calibrate_models(
-    #     arr_x,
-    #     arr_y,
-    #     arr_x_ev,
-    #     arr_y_ev,
-    #     params,
-    #     callbacks
-    # )
+    models = calibrate_models(
+        arr_x,
+        arr_y,
+        arr_x_ev,
+        arr_y_ev,
+        params,
+        callbacks,
+        client
+    )
+
+    print(models)
 
     # del arr_x, arr_y, arr_x_ev, arr_y_ev
     # gc.collect()

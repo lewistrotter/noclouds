@@ -15,8 +15,8 @@ DATA_DIR = '../tests/data'
 def _dev():
     """SSRF development only."""
 
-    client = None
-    #client = Client(n_workers=4, threads_per_worker=1)
+    #client = None
+    client = Client(n_workers=8, threads_per_worker=1)
 
     nc_cloud = os.path.join(DATA_DIR, '2018-02-21.nc')
     nc_clear = os.path.join(DATA_DIR, '2018-02-11.nc')
@@ -34,8 +34,6 @@ def _dev():
         decode_coords='all',
         chunks={},
     ).drop_vars('spatial_ref')
-
-
 
     nodata = -999
     n_total_samples = 2000000
