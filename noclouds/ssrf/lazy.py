@@ -1,5 +1,6 @@
 
 import gc
+import typing
 import numpy as np
 import numba as nb
 import xarray as xr
@@ -15,12 +16,30 @@ from dask.diagnostics import ProgressBar
 from dask.distributed import Client
 
 from .core import _make_train_mask
+from .core import _make_predict_mask
 from .core import _extract_train_idx
+from .core import _extract_predict_idx
 from .core import _extract_x
 from .core import _extract_y
+from .core import _fill_y
 
 from noclouds.utils.helpers import nodata_mask
 from noclouds.utils.helpers import default_params
+
+
+def _get_block_shapes(
+        arr: dask.array.Array
+) -> list:
+
+    # get (y, x) chunk shapes (row-major)
+    y_chunks, x_chunks = arr.chunks
+    block_shapes = [
+        (y, x)
+        for y in y_chunks
+        for x in x_chunks
+    ]
+
+    return block_shapes
 
 
 def _guess_train_idx_size_per_block(
@@ -157,6 +176,21 @@ def _extract_train_idx_per_block(
     return refined_idx_blocks
 
 
+def _extract_predict_idx_per_block(
+        arr_mask: dask.array.Array
+) -> list:
+
+    idx_delays = [
+        dask.delayed(_extract_predict_idx)(b)
+        for b in arr_mask.to_delayed().ravel()
+    ]
+
+    with ProgressBar():
+        idx_blocks = dask.compute(*idx_delays)
+
+    return idx_blocks
+
+
 def _split_idx_per_block(
         idx_blocks: list,
         percent_train: float,
@@ -178,6 +212,31 @@ def _split_idx_per_block(
         idx_eval.append(arr[idx[split_i:]])
 
     return idx_train, idx_eval
+
+
+def _pack_with_delayed_dummies(
+        original: list,
+        missing: list,
+        template: typing.Any
+) -> list:
+
+    n_original = len(original)
+    n_missing = len(missing)
+
+    if n_original == n_missing:
+        return missing
+
+    packed = []
+
+    j = 0
+    for arr in original:
+        if arr.size == 0:
+            packed.append(template)
+        else:
+            packed.append(missing[j])
+            j += 1
+
+    return packed
 
 
 def extract_train_set(
@@ -315,7 +374,7 @@ def extract_train_set(
 
         arr_y.append(np.vstack([*y_delays]))
 
-    arr_y = np.hstack(arr_y)
+    arr_y = np.hstack(arr_y)  # TODO ensure h and vstack ok
 
     if percent_train is None:
         return arr_x, arr_y, None, None
@@ -384,6 +443,7 @@ def calibrate_models(
         callbacks: list | None = None,
         client: Client | None = None
 ) -> list:
+    """TODO"""
 
     if not isinstance(arr_x, dask.array.Array):
         raise TypeError('Input arr_x must be type dask.array.Array.')
@@ -433,7 +493,7 @@ def calibrate_models(
         params = default_params()
         callbacks = None
 
-    x_chunks = {0: -1, 1: -1}
+    x_chunks = {0: -1, 1: -1}  # TODO: do auto here then use chunk size for y
     y_chunks = {0: -1, 1: 1}
 
     arr_x = arr_x.rechunk(x_chunks)
@@ -464,7 +524,179 @@ def calibrate_models(
     return models
 
 
+def predict_models(
+        da_ref: xr.DataArray,
+        da_tar: xr.DataArray,
+        models: list,
+        nodata: int | float,
+        predict_inplace: bool = True,
+        client: Client | None = None
+) -> xr.DataArray:
+    """TODO"""
 
+    if not isinstance(da_ref, xr.DataArray):
+        raise TypeError('Input da_ref must be type xr.DataArray.')
+    if not isinstance(da_tar, xr.DataArray):
+        raise TypeError('Input da_tar must be type xr.DataArray.')
+
+    if da_ref.ndim not in (2, 3):
+        raise ValueError('Input da_ref must be 2D (y, x) or 3D (b, y, x).')
+    if da_tar.ndim not in (2, 3):
+        raise ValueError('Input da_tar must be 2D (y, x) or 3D (b, y, x).')
+
+    if da_ref.shape[1] != da_tar.shape[1]:
+        raise ValueError('Inputs da_ref and da_tar must have same y size.')
+    if da_ref.shape[2] != da_tar.shape[2]:
+        raise ValueError('Inputs da_ref and da_tar must have same x size.')
+
+    if da_ref.dtype != da_tar.dtype:
+        raise TypeError('Inputs da_ref and da_tar must have same dtype.')
+
+    # TODO: ensure chunk sizes same
+
+    if nodata is None:
+        raise ValueError('Input nodata must be provided.')
+
+    if models is None:
+        raise ValueError('Input models must be provided.')
+
+    if client is None:
+        raise ValueError('No dask client provided.')
+
+    # offset for map overlaps of size (1, 1)
+    offset = 1
+
+    arr_ref = da_ref.data
+    arr_tar = da_tar.data
+
+    if not isinstance(arr_ref, dask.array.Array):
+        raise TypeError('Input da_ref must be backed by a dask.array.Array.')
+    if not isinstance(arr_tar, dask.array.Array):
+        raise TypeError('Input arr_tar must be backed by a dask.array.Array.')
+
+    # we always need (b, y, x) array
+    if arr_ref.ndim == 2:
+        arr_ref = np.expand_dims(arr_ref, axis=0)
+    if arr_tar.ndim == 2:
+        arr_tar = np.expand_dims(arr_tar, axis=0)
+
+    if len(models) != arr_tar.shape[0]:
+        raise ValueError('Inputs models and da_ref must have same num vars.')
+
+    # where (3, 3) x win all true and y false
+    arr_mask = map_overlap(
+        _make_predict_mask,
+        nodata_mask(arr_ref, nodata),
+        nodata_mask(arr_tar, nodata),
+        depth=(1, 1),
+        boundary=True,  # nodata == true
+        dtype=np.bool_
+    )
+
+    # extract idx of all missing y and valid x per block
+    idx_blocks = _extract_predict_idx_per_block(arr_mask)
+
+    del arr_mask
+    gc.collect()
+
+    # if arr_i.size == 0:  # TODO: adapt to list of arrs
+    #     raise ValueError('No valid training data found.')
+
+    # extract train x samples at idx
+    arr_x = []
+    for var in range(arr_ref.shape[0]):
+        x_blocks = overlap(
+            arr_ref[var, :, :],
+            depth=(1, 1),
+            boundary=nodata
+        )
+
+        x_delays = [
+            dask.array.from_delayed(
+                dask.delayed(_extract_x)
+                (i, b, offset),
+                shape=(i.size, 9),  # always 9 pix win
+                dtype=x_blocks.dtype
+            )
+            for i, b in zip(
+                idx_blocks,
+                x_blocks.to_delayed().ravel()
+            )
+        ]
+
+        arr_x.append(np.vstack([*x_delays]))
+
+    arr_x = np.hstack(arr_x)
+
+    # predict nodata for each y variable
+    arr_y_pred = []
+    for i, model in enumerate(models):
+        print(f'Predicting variable {i + 1}.')
+        arr_y_pred.append(
+            model.predict(arr_x).astype(arr_x.dtype)
+        )
+
+    #arr_y_pred = np.stack(arr_y_pred, axis=1)
+    arr_y_pred = dask.array.stack(arr_y_pred, axis=1)
+
+    del arr_x
+    gc.collect()
+
+    # no longer need to consider padding
+    offset = 0
+
+    arr_y = []
+    for var in range(arr_tar.shape[0]):
+
+        block_shapes = _get_block_shapes(arr_tar[var, :, :])
+
+        t_delays = arr_tar[var, :, :].to_delayed().ravel()
+        p_delays = arr_y_pred[:, var].to_delayed().ravel()
+
+        # vstack above removes empty arrays, add back in
+        p_delays_full = _pack_with_delayed_dummies(
+            idx_blocks,
+            p_delays,
+            dask.delayed(np.empty((0, ), dtype=da_tar.dtype))  # always 9 pix
+        )
+
+        y_delays = [
+            dask.array.from_delayed(
+                dask.delayed(_fill_y)
+                (i, t, p, offset, predict_inplace),
+                shape=s,
+                dtype=arr_tar.dtype
+            )
+            for i, t, p, s in zip(
+                idx_blocks,
+                t_delays,
+                p_delays_full,
+                block_shapes
+            )
+        ]
+
+        # ...
+        n_y_chunks, n_x_chunks = arr_tar[var, :, :].numblocks
+        arr_y_sel = dask.array.block([
+            y_delays[i * n_y_chunks: (i + 1) * n_x_chunks]
+            for i in range(n_y_chunks)
+        ])
+
+        arr_y.append(arr_y_sel)
+
+    arr_y = np.stack(arr_y, axis=0)
+
+    del arr_y_pred
+    gc.collect()
+
+    da_out = xr.DataArray(
+        arr_y,
+        dims=da_tar.dims,
+        coords=da_tar.coords,
+        attrs=da_tar.attrs
+    )
+
+    return da_out
 
 
 def run(
@@ -480,6 +712,7 @@ def run(
         callbacks: list | None = None,
         client: Client | None = None
 ) -> xr.DataArray:
+    """TODO"""
 
     if not isinstance(da_ref, xr.DataArray):
         raise TypeError('Input da_ref must be type xr.DataArray.')
@@ -519,17 +752,16 @@ def run(
         client
     )
 
-    print(models)
+    del arr_x, arr_y, arr_x_ev, arr_y_ev
+    gc.collect()
 
-    # del arr_x, arr_y, arr_x_ev, arr_y_ev
-    # gc.collect()
-
-    # da_y = predict_models(
-    #     da_ref,
-    #     da_tar,
-    #     models,
-    #     nodata,
-    #     predict_inplace
-    # )
+    da_y = predict_models(
+        da_ref,
+        da_tar,
+        models,
+        nodata,
+        predict_inplace,
+        client
+    )
 
     return da_y

@@ -16,7 +16,7 @@ def _dev():
     """SSRF development only."""
 
     #client = None
-    client = Client(n_workers=8, threads_per_worker=1)
+    client = Client(n_workers=4, threads_per_worker=1, memory_limit='12GB')
 
     nc_cloud = os.path.join(DATA_DIR, '2018-02-21.nc')
     nc_clear = os.path.join(DATA_DIR, '2018-02-11.nc')
@@ -76,4 +76,15 @@ def _dev():
 
 
 if __name__ == '__main__':
+    import sys
+    if hasattr(sys, "_pydevd_bundle"):
+        # PyCharm debugger loaded — disable its asyncio patch
+        try:
+            from _pydevd_bundle import pydevd_patch_asyncio
+
+            pydevd_patch_asyncio.stop_patch_asyncio()
+            print("✅ Disabled PyCharm asyncio patch")
+        except Exception as e:
+            print("Could not disable PyCharm asyncio patch:", e)
+
     _dev()

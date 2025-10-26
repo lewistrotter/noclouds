@@ -28,7 +28,6 @@ def _make_train_mask(
     return arr_out
 
 
-# TODO: exact same as dask, ref this one in lazy
 @nb.njit(parallel=True)
 def _make_predict_mask(
         arr_ref: np.ndarray,
@@ -89,7 +88,6 @@ def _split_train_eval_idx(
     return arr_i[:split_i], arr_i[split_i:]
 
 
-# TODO: exact same as dask, ref this one in lazy
 def _extract_predict_idx(
         arr: np.ndarray
 ) -> np.ndarray:
@@ -101,7 +99,6 @@ def _extract_predict_idx(
     arr_i = arr_i.astype(np.int32)
 
     return arr_i
-
 
 
 @nb.njit(parallel=True)
@@ -128,7 +125,6 @@ def _extract_x(
     return arr_x
 
 
-# TODO: exact same as dask, ref this one in lazy
 @nb.njit(parallel=True)
 def _extract_y(
         arr_i: np.ndarray,
@@ -506,9 +502,6 @@ def predict_models(
     if models is None:
         raise ValueError('Input models must be provided.')
 
-    # always use no offset (coz no map_overlap)
-    offset = 0
-
     arr_ref = da_ref.data
     arr_tar = da_tar.data
 
@@ -521,15 +514,23 @@ def predict_models(
     if len(models) != arr_tar.shape[0]:
         raise ValueError('Inputs models and da_ref must have same num vars.')
 
+    # ...
     arr_mask = _make_predict_mask(
         nodata_mask(arr_ref, nodata),
         nodata_mask(arr_tar, nodata)
     )
 
+    # ...
     arr_i = _extract_predict_idx(arr_mask)
 
     del arr_mask
     gc.collect()
+
+    if arr_i.size == 0:
+        raise ValueError('No valid prediction data found.')
+
+    # always use no offset (coz no map_overlap)
+    offset = 0
 
     # make predict x set
     arr_x = np.hstack([
