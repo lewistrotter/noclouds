@@ -14,7 +14,6 @@ def nodata_mask(
         return np.any(np.isnan(arr), axis=0)
 
 
-
 @nb.njit(inline='always')
 def has_nodata_1d(
         arr: np.ndarray,

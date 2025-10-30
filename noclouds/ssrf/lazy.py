@@ -2,18 +2,19 @@
 import gc
 import typing
 import numpy as np
-import numba as nb
 import xarray as xr
 import dask
 
 from dask.array.overlap import overlap
 from dask.array import map_overlap
-from dask.array import map_blocks
-
-from lightgbm.dask import DaskLGBMRegressor
 
 from dask.diagnostics import ProgressBar
 from dask.distributed import Client
+
+from lightgbm.dask import DaskLGBMRegressor
+
+from noclouds.utils.helpers import nodata_mask
+from noclouds.utils.helpers import default_params
 
 from .core import _make_train_mask
 from .core import _make_predict_mask
@@ -22,9 +23,6 @@ from .core import _extract_predict_idx
 from .core import _extract_x
 from .core import _extract_y
 from .core import _fill_y
-
-from noclouds.utils.helpers import nodata_mask
-from noclouds.utils.helpers import default_params
 
 
 def _get_block_shapes(
