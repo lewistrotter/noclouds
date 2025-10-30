@@ -76,10 +76,11 @@
       <td align="left"><a href="https://doi.org/10.1016/j.srs.2022.100048">Wang et al. (2022)</a></td>
       <td align="center">✅</td>
       <td align="center">✅</td>
-      <td align="center"><img src="docs/images/mwr_example.png" width="100%"></td>
+      <td align="center"><img src="docs/images/mwr.png" width="100%"></td>
     </tr>
   </tbody>
 </table>
+
 
 
 
