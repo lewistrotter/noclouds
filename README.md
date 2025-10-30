@@ -69,17 +69,18 @@
       <td align="left"><a href="https://www.mdpi.com/342052">Brooks et al. (2018)</a></td>
       <td align="center">✅</td>
       <td align="center">✅</td>
-      <td align="center"></td>
+      <td align="center"><img src="docs/images/mwr_tmp.png" width="100%"></td>
     </tr>
     <tr>
       <td align="left">SSRF (Spatial-Spectral Random Forest)</td>
       <td align="left"><a href="https://doi.org/10.1016/j.srs.2022.100048">Wang et al. (2022)</a></td>
       <td align="center">✅</td>
       <td align="center">✅</td>
-      <td align="center"><img src="docs/images/mwr.png" width="100%"></td>
+      <td align="center"><img src="docs/images/ssrf_tmp.png" width="100%"></td>
     </tr>
   </tbody>
 </table>
+
 
 
 
