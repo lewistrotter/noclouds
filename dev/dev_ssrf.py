@@ -62,6 +62,8 @@ def _dev():
         callbacks=cbs
     )
 
+    da_out[[0, 1, 2]].rio.to_raster('ssrf_output.tif')
+
     e = time.time()
     print(f'Processing time: {e - s}')
 
