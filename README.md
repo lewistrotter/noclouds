@@ -5,6 +5,7 @@
 ## Supported methods
 
 ### Gap-filling
+
 <table style="width:100%;">
   <tr>
     <th>Method</th>
@@ -32,6 +33,7 @@
 
 
 ### Anomoly detection
+
 <table style="width:100%;">
   <tr>
     <th>Method</th>
@@ -47,6 +49,36 @@
     <td><p align="center">✅</p></td>
     <td><img src="docs/images/mfsr.png" width="100%"></td>
   </tr>
+</table>
+
+## Testing
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Citation</th>
+      <th>NumPy<br>xr.DataArray</th>
+      <th>Dask<br>xr.DataArray</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="left">MWR (Moving Window Regression)</td>
+      <td align="left"><a href="https://www.mdpi.com/342052">Brooks et al. (2018)</a></td>
+      <td align="center">✅</td>
+      <td align="center">✅</td>
+      <td align="center"></td>
+    </tr>
+    <tr>
+      <td align="left">SSRF (Spatial-Spectral Random Forest)</td>
+      <td align="left"><a href="https://doi.org/10.1016/j.srs.2022.100048">Wang et al. (2022)</a></td>
+      <td align="center">✅</td>
+      <td align="center">✅</td>
+      <td align="center"></td>
+    </tr>
+  </tbody>
 </table>
 
 
