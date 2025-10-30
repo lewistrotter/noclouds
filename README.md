@@ -48,11 +48,12 @@
   </thead>
   <tbody>
     <tr>
-      <td align="left">MWMF (Moving Window Median Filter)</td>
+      <td align="left">MWMF (Moving Window Median Filter)&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; </td>
       <td align="left"><a href="https://web.nateko.lu.se/personal/Lars.Eklundh/TIMESAT/prog/version33/TIMESAT33_SoftwareManual.pdf">Eklundh and Jönsson (2017)</a></td>
       <td align="center">✅</td>
       <td align="center">✅</td>
-      <td align="center"><img src="docs/images/mwmf.png" width="100%"></td>
+      <td align="center"><img src="docs/images/ssrf.png" width="100%"></td>
     </tr>
   </tbody>
 </table>
+
